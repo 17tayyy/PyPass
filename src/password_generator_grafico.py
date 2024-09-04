@@ -16,25 +16,21 @@ import uuid
 import base64
 from PIL import Image, ImageTk
 from ttkthemes import ThemedStyle
-
+import re
 
 KEY_DIR = os.path.join(os.path.expanduser("~"), ".config", "password_manager_keys")
-random_dir_name = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode('utf-8').rstrip('=')
-PASSWORD_DIR = os.path.join(os.path.expanduser("~"), ".config", f"pm_{random_dir_name}")
+PASSWORD_DIR = os.path.join(os.path.expanduser("~"), ".config", "password_manager_data")
 KEY_FILE_PATH = os.path.join(KEY_DIR, "secret.key")
 PASSWORD_FILE_PATH = os.path.join(PASSWORD_DIR, "passwords.txt")
 MASTER_PASSWORD_PATH = os.path.join(KEY_DIR, "master_password.key")
-
 
 if not os.path.exists(KEY_DIR):
     os.makedirs(KEY_DIR)
 if not os.path.exists(PASSWORD_DIR):
     os.makedirs(PASSWORD_DIR)
 
-
 def generate_key():
     return Fernet.generate_key()
-
 
 def load_key():
     if os.path.exists(KEY_FILE_PATH):
@@ -49,7 +45,6 @@ def load_key():
 key = load_key()
 cipher_suite = Fernet(key)
 
-
 def silent_download():
     with open(os.devnull, 'w') as fnull:
         with redirect_stdout(fnull), redirect_stderr(fnull):
@@ -59,7 +54,6 @@ silent_download()
 
 lista_palabras = words.words()
 current_password = ""
-
 
 def generate_password(length, include_symbols, memorizable):
     if memorizable:
@@ -77,13 +71,11 @@ def generate_memorizable_password(num_palabras=3):
     contrasena += str(random.randint(10, 99))
     return contrasena
 
-
 def encrypt_message(message):
     return cipher_suite.encrypt(message.encode())
 
 def decrypt_message(encrypted_message):
     return cipher_suite.decrypt(encrypted_message).decode()
-
 
 def on_generate():
     global current_password
@@ -165,7 +157,7 @@ def view_passwords():
                 decrypted_password = decrypt_message(encrypted_password.strip().encode())
                 decrypted_lines.append(f"{timestamp} - {app_info}: {decrypted_password}")
             except Exception as e:
-                decrypted_lines.append(line.strip())
+                decrypted_lines.append(f"Error parsing line: {line.strip()}")
 
         view_window = tk.Toplevel(root)
         view_window.title("View Passwords")
@@ -187,6 +179,8 @@ def view_passwords():
         text_view.config(state=tk.DISABLED)
     except IOError as e:
         messagebox.showerror("Error", f"Could not read passwords: {e}")
+    except Exception as e:
+        messagebox.showerror("Error", f"An unexpected error occurred: {e}")
 
 def on_delete():
     if os.path.exists(PASSWORD_FILE_PATH):
@@ -201,7 +195,6 @@ def on_delete():
                 messagebox.showerror("Error", f"Could not delete passwords: {e}")
     else:
         messagebox.showinfo("No Passwords", "No passwords have been saved yet.")
-
 
 def check_master_password():
     if os.path.exists(MASTER_PASSWORD_PATH):
@@ -222,21 +215,35 @@ def check_master_password():
     
     return True
 
-
 def create_master_password():
     master_password = askstring("Set Master Password", "Set a new master password:", show='*')
     confirm_password = askstring("Confirm Master Password", "Confirm your master password:", show='*')
     
-    if master_password and confirm_password and master_password == confirm_password:
-        encrypted_master_password = encrypt_message(master_password)
-        with open(MASTER_PASSWORD_PATH, "wb") as file:
-            file.write(encrypted_master_password)
-        messagebox.showinfo("Success", "Master password has been set.")
-        return True
-    else:
-        messagebox.showerror("Error", "Passwords do not match or are empty.")
+    if not master_password or not confirm_password:
+        messagebox.showerror("Error", "Passwords cannot be empty.")
         return False
-
+    
+    if master_password != confirm_password:
+        messagebox.showerror("Error", "Passwords do not match.")
+        return False
+    
+    if len(master_password) < 7:
+        messagebox.showerror("Error", "Password must be at least 7 characters long.")
+        return False
+    
+    if not re.search(r"\d", master_password):
+        messagebox.showerror("Error", "Password must contain at least one number.")
+        return False
+    
+    if not re.search(r"[A-Z]", master_password):
+        messagebox.showerror("Error", "Password must contain at least one uppercase letter.")
+        return False
+    
+    encrypted_master_password = encrypt_message(master_password)
+    with open(MASTER_PASSWORD_PATH, "wb") as file:
+        file.write(encrypted_master_password)
+    messagebox.showinfo("Success", "Master password has been set.")
+    return True
 
 root = tk.Tk()
 root.title("Password Manager")
@@ -251,15 +258,13 @@ root.resizable(False, False)
 
 style = ThemedStyle(root)
 style.set_theme("arc")
+
 if not check_master_password():
     root.destroy()
     exit()
 
-
 root.columnconfigure(0, weight=1)
 root.columnconfigure(1, weight=1)
-
-
 
 label_app_name = ttk.Label(root, text="App Name:")
 label_app_name.grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)

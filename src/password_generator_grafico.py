@@ -216,7 +216,7 @@ def check_master_password():
     return True
 
 def create_master_password():
-    master_password = askstring("Set Master Password", "Set a new master password:", show='*')
+    master_password = askstring("Set Master Password", "Set a new master password (At least 7 characters, 1 uppercase and 1 number):", show='*')
     confirm_password = askstring("Confirm Master Password", "Confirm your master password:", show='*')
     
     if not master_password or not confirm_password:

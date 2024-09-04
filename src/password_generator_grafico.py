@@ -17,19 +17,24 @@ import base64
 from PIL import Image, ImageTk
 from ttkthemes import ThemedStyle
 
+
 KEY_DIR = os.path.join(os.path.expanduser("~"), ".config", "password_manager_keys")
 random_dir_name = base64.urlsafe_b64encode(uuid.uuid4().bytes).decode('utf-8').rstrip('=')
 PASSWORD_DIR = os.path.join(os.path.expanduser("~"), ".config", f"pm_{random_dir_name}")
 KEY_FILE_PATH = os.path.join(KEY_DIR, "secret.key")
 PASSWORD_FILE_PATH = os.path.join(PASSWORD_DIR, "passwords.txt")
+MASTER_PASSWORD_PATH = os.path.join(KEY_DIR, "master_password.key")
+
 
 if not os.path.exists(KEY_DIR):
     os.makedirs(KEY_DIR)
 if not os.path.exists(PASSWORD_DIR):
     os.makedirs(PASSWORD_DIR)
 
+
 def generate_key():
     return Fernet.generate_key()
+
 
 def load_key():
     if os.path.exists(KEY_FILE_PATH):
@@ -44,6 +49,7 @@ def load_key():
 key = load_key()
 cipher_suite = Fernet(key)
 
+
 def silent_download():
     with open(os.devnull, 'w') as fnull:
         with redirect_stdout(fnull), redirect_stderr(fnull):
@@ -53,6 +59,7 @@ silent_download()
 
 lista_palabras = words.words()
 current_password = ""
+
 
 def generate_password(length, include_symbols, memorizable):
     if memorizable:
@@ -69,6 +76,14 @@ def generate_memorizable_password(num_palabras=3):
     contrasena = '-'.join(random.choice(lista_palabras).capitalize() for _ in range(num_palabras))
     contrasena += str(random.randint(10, 99))
     return contrasena
+
+
+def encrypt_message(message):
+    return cipher_suite.encrypt(message.encode())
+
+def decrypt_message(encrypted_message):
+    return cipher_suite.decrypt(encrypted_message).decode()
+
 
 def on_generate():
     global current_password
@@ -90,12 +105,6 @@ def on_generate():
         messagebox.showerror("Input Error", "Please enter a valid number for length.")
     except Exception as e:
         messagebox.showerror("Error", f"An error occurred: {e}")
-
-def encrypt_message(message):
-    return cipher_suite.encrypt(message.encode())
-
-def decrypt_message(encrypted_message):
-    return cipher_suite.decrypt(encrypted_message).decode()
 
 def on_save():
     app_name = entry_app_name.get().strip()
@@ -193,8 +202,44 @@ def on_delete():
     else:
         messagebox.showinfo("No Passwords", "No passwords have been saved yet.")
 
+
+def check_master_password():
+    if os.path.exists(MASTER_PASSWORD_PATH):
+        with open(MASTER_PASSWORD_PATH, "rb") as file:
+            encrypted_master_password = file.read()
+        
+        master_password = askstring("Master Password", "Enter your master password:", show='*')
+        if not master_password:
+            messagebox.showerror("Error", "Master password cannot be empty.")
+            return False
+        else:
+            decrypted_password = decrypt_message(encrypted_master_password)
+            if master_password != decrypted_password:
+                messagebox.showerror("Error", "Incorrect master password.")
+                return False
+    else:
+        return create_master_password()
+    
+    return True
+
+
+def create_master_password():
+    master_password = askstring("Set Master Password", "Set a new master password:", show='*')
+    confirm_password = askstring("Confirm Master Password", "Confirm your master password:", show='*')
+    
+    if master_password and confirm_password and master_password == confirm_password:
+        encrypted_master_password = encrypt_message(master_password)
+        with open(MASTER_PASSWORD_PATH, "wb") as file:
+            file.write(encrypted_master_password)
+        messagebox.showinfo("Success", "Master password has been set.")
+        return True
+    else:
+        messagebox.showerror("Error", "Passwords do not match or are empty.")
+        return False
+
+
 root = tk.Tk()
-root.title("Password Generator")
+root.title("Password Manager")
 window_width = 600
 window_height = 550
 screen_width = root.winfo_screenwidth()
@@ -205,58 +250,60 @@ root.geometry(f"{window_width}x{window_height}+{x}+{y}")
 root.resizable(False, False)
 
 style = ThemedStyle(root)
-style.set_theme("arc")  
+style.set_theme("arc")
+if not check_master_password():
+    root.destroy()
+    exit()
 
-
-try:
-    logo = Image.open("logo.png")
-    logo = logo.resize((100, 100), Image.ANTIALIAS)
-    logo_photo = ImageTk.PhotoImage(logo)
-    logo_label = tk.Label(root, image=logo_photo, bg='#1E1E1E')
-    logo_label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
-except FileNotFoundError:
-    print("El archivo logo.png no se encuentra en la ruta especificada.")
-
-title_label = ttk.Label(root, text="Password Generator", font=('Helvetica', 18, 'bold'))
-title_label.grid(row=1, column=0, columnspan=2, padx=10, pady=10)
-
-frame_inputs = ttk.Frame(root, padding="10")
-frame_inputs.grid(row=2, column=0, columnspan=2, sticky=tk.W+tk.E, padx=10, pady=10)
-
-ttk.Label(frame_inputs, text="Application Name:").grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
-entry_app_name = ttk.Entry(frame_inputs)
-entry_app_name.grid(row=0, column=1, padx=10, pady=5, sticky=tk.EW)
-
-ttk.Label(frame_inputs, text="User/Email:").grid(row=1, column=0, padx=10, pady=5, sticky=tk.W)
-entry_user_email = ttk.Entry(frame_inputs)
-entry_user_email.grid(row=1, column=1, padx=10, pady=5, sticky=tk.EW)
-
-ttk.Label(frame_inputs, text="Length of Password:").grid(row=2, column=0, padx=10, pady=5, sticky=tk.W)
-entry_length = ttk.Entry(frame_inputs)
-entry_length.grid(row=2, column=1, padx=10, pady=5, sticky=tk.EW)
-
-var_symbols = tk.BooleanVar()
-ttk.Checkbutton(frame_inputs, text="Include Symbols", variable=var_symbols, onvalue=True, offvalue=False).grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky=tk.W)
-
-var_memorizable = tk.BooleanVar()
-ttk.Checkbutton(frame_inputs, text="Memorizable", variable=var_memorizable, onvalue=False, offvalue=True).grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky=tk.W)
-
-text_password = tk.Text(root, height=2, width=50, bg='#333333', fg='#FFFFFF')
-text_password.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
-text_password.config(state=tk.DISABLED)
-
-button_save = ttk.Button(root, text="Save Password", command=on_save)
-button_new = ttk.Button(root, text="Generate New", command=on_generate)
-button_copy = ttk.Button(root, text="Copy to Clipboard", command=copy_to_clipboard)
-button_delete = ttk.Button(root, text="Delete All Passwords", command=on_delete)
-button_view = ttk.Button(root, text="View Passwords", command=view_passwords)
-
-button_save.grid(row=8, column=0, padx=10, pady=10, sticky=tk.EW)
-button_new.grid(row=8, column=1, padx=10, pady=10, sticky=tk.EW)
-button_copy.grid(row=9, column=0, columnspan=2, padx=10, pady=10, sticky=tk.EW)
-button_delete.grid(row=10, column=0, columnspan=2, padx=10, pady=10, sticky=tk.EW)
-button_view.grid(row=11, column=0, columnspan=2, padx=10, pady=10, sticky=tk.EW)
 
 root.columnconfigure(0, weight=1)
 root.columnconfigure(1, weight=1)
+
+
+
+label_app_name = ttk.Label(root, text="App Name:")
+label_app_name.grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+
+entry_app_name = ttk.Entry(root)
+entry_app_name.grid(row=0, column=1, padx=10, pady=10, sticky=tk.EW)
+
+label_user_email = ttk.Label(root, text="User/Email:")
+label_user_email.grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
+
+entry_user_email = ttk.Entry(root)
+entry_user_email.grid(row=1, column=1, padx=10, pady=10, sticky=tk.EW)
+
+label_length = ttk.Label(root, text="Password Length:")
+label_length.grid(row=2, column=0, padx=10, pady=10, sticky=tk.W)
+
+entry_length = ttk.Entry(root)
+entry_length.grid(row=2, column=1, padx=10, pady=10, sticky=tk.EW)
+entry_length.insert(0, "12")
+
+var_symbols = tk.BooleanVar()
+check_symbols = ttk.Checkbutton(root, text="Include Symbols", variable=var_symbols)
+check_symbols.grid(row=3, column=0, padx=10, pady=10, sticky=tk.W)
+
+var_memorizable = tk.BooleanVar()
+check_memorizable = ttk.Checkbutton(root, text="Memorizable", variable=var_memorizable)
+check_memorizable.grid(row=3, column=1, padx=10, pady=10, sticky=tk.W)
+
+button_generate = ttk.Button(root, text="Generate Password", command=on_generate)
+button_generate.grid(row=4, column=0, columnspan=2, padx=10, pady=10, sticky=tk.EW)
+
+text_password = tk.Text(root, height=5, width=40, state=tk.DISABLED)
+text_password.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+
+button_copy = ttk.Button(root, text="Copy to Clipboard", command=copy_to_clipboard)
+button_copy.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky=tk.EW)
+
+button_save = ttk.Button(root, text="Save Password", command=on_save)
+button_new = ttk.Button(root, text="New Password", command=on_new)
+
+button_view = ttk.Button(root, text="View Saved Passwords", command=view_passwords)
+button_view.grid(row=7, column=0, padx=10, pady=10, sticky=tk.EW)
+
+button_delete = ttk.Button(root, text="Delete All Passwords", command=on_delete)
+button_delete.grid(row=7, column=1, padx=10, pady=10, sticky=tk.EW)
+
 root.mainloop()

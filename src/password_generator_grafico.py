@@ -246,7 +246,7 @@ def create_master_password():
     return True
 
 root = tk.Tk()
-root.title("Password Manager")
+root.title("PyPass")
 window_width = 600
 window_height = 550
 screen_width = root.winfo_screenwidth()
